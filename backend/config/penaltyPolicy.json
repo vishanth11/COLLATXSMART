@@ -1,0 +1,6 @@
+{
+  "penaltyType": "Flat",
+  "penaltyValue": 100,
+  "gracePeriodDays": 5,
+  "maxPenaltyLimit": 1000
+}
