@@ -1,0 +1,54 @@
+import { ArrowLeft, ArrowUpRight, CalendarDays, CheckCircle2, CircleDollarSign, FileText, Upload, UserRound, WalletCards } from "lucide-react";
+import { ChangeEvent, useState } from "react";
+import { Link } from "wouter";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { trpc } from "@/lib/trpc";
+import { EmptyState, StatCard, StatusBadge, ViewLink, WorkspacePageHeader } from "@/components/WorkspaceUI";
+
+const money = (value?: number | string) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
+const readableDate = (value?: string | Date | null) => value ? new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+
+export function CustomerDashboard() {
+  const { t } = useLanguage();
+  const { data, isLoading } = trpc.customer.dashboard.useQuery();
+  const loan = data?.loan;
+  return <div><WorkspacePageHeader eyebrow={t("dashboard.customer")} title={t("customer.heading")} body={t("customer.body")} action={<Link href="/customer/loan" className="button button--orange">{t("customer.viewLoan")} <ArrowUpRight size={16} /></Link>} />{isLoading ? <LoadingRows /> : <><div className="stats-grid"><StatCard label={t("customer.outstanding")} value={money(loan?.outstanding)} detail="Current balance" tone="orange" /><StatCard label={t("customer.nextDue")} value={money(loan?.nextDueAmount)} detail={readableDate(loan?.nextDueDate)} tone="blue" /><StatCard label={t("customer.totalPaid")} value={money(data?.totalPaid)} detail="Across this loan" tone="green" /><StatCard label={t("customer.loanStatus")} value={loan?.status || "No active loan"} detail={loan?.loanType || "Awaiting application"} tone="neutral" /></div><div className="workspace-grid workspace-grid--two"><section className="workspace-panel"><div className="panel-heading"><div><span className="panel-kicker">{t("customer.schedule")}</span><h2>Next installments</h2></div><CalendarDays size={20} /></div>{data?.schedule?.length ? <div className="schedule-list">{data.schedule.slice(0, 4).map((item: any) => <div className="schedule-row" key={item.installmentNumber}><span className="schedule-row__number">{String(item.installmentNumber).padStart(2, "0")}</span><div><strong>{t("customer.emi")} {item.installmentNumber}</strong><small>{readableDate(item.dueDate)}</small></div><strong>{money(item.amount)}</strong><StatusBadge status={item.status} /></div>)}</div> : <EmptyState title="No schedule yet" body="Your installment schedule will appear here after a loan is approved." />}</section><section className="workspace-panel workspace-panel--accent"><div className="panel-heading"><div><span className="panel-kicker">Keep things current</span><h2>Stay ready for the next step.</h2></div><CircleDollarSign size={22} /></div><p className="panel-body-copy">Upload any requested document, review your payment history, or update your contact details.</p><div className="panel-actions"><Link href="/customer/documents" className="button button--dark">{t("customer.upload")} <Upload size={16} /></Link><Link href="/customer/profile" className="text-link">{t("customer.updateProfile")} <ArrowUpRight size={15} /></Link></div></section></div></>}</div>;
+}
+
+export function CustomerLoan() {
+  const { t } = useLanguage();
+  const { data, isLoading } = trpc.customer.loan.useQuery();
+  if (isLoading) return <LoadingRows />;
+  if (!data) return <div><WorkspacePageHeader eyebrow={t("dashboard.loans")} title="Your active loan" body="Your loan details will appear here after approval." /><EmptyState title="No active loan" body="Start an application if you need financial support." action={<Link href="/apply" className="button button--orange">Apply for a loan</Link>} /></div>;
+  return <div><WorkspacePageHeader eyebrow={t("dashboard.loans")} title="Your active loan" body="A single, clear view of the loan account connected to your profile." action={<StatusBadge status={data.status} />} /><div className="loan-hero-card"><div><span className="panel-kicker">{data.loanNumber || "LOAN ACCOUNT"}</span><h2>{data.loanType}</h2><p>Approved on {readableDate(data.approvedAt)}</p></div><div className="loan-hero-card__amount"><span>Outstanding</span><strong>{money(data.outstanding)}</strong></div></div><div className="detail-grid"><div className="workspace-panel"><div className="panel-heading"><h2>Account terms</h2><WalletCards size={20} /></div><div className="detail-list"><Detail label="Principal" value={money(data.principalAmount)} /><Detail label="Interest rate" value={`${data.interestRate || 0}%`} /><Detail label="Duration" value={`${data.termMonths || 0} months`} /><Detail label="Repayment" value={data.repaymentFrequency || "Monthly"} /><Detail label="Next due" value={readableDate(data.nextDueDate)} /><Detail label="Next installment" value={money(data.nextDueAmount)} /></div></div><div className="workspace-panel"><div className="panel-heading"><h2>Repayment progress</h2><CheckCircle2 size={20} /></div><div className="progress-ring"><span>{data.progress || 0}%</span></div><p className="progress-caption">{data.installmentsPaid || 0} of {data.totalInstallments || 0} installments paid.</p><Link href="/customer/payments" className="button button--ghost button--full">{t("customer.history")} <ArrowUpRight size={16} /></Link></div></div></div>;
+}
+
+export function CustomerPayments() {
+  const { t } = useLanguage();
+  const { data, isLoading } = trpc.customer.payments.useQuery();
+  return <div><WorkspacePageHeader eyebrow={t("dashboard.payments")} title={t("customer.history")} body="Every receipt and repayment in one place." />{isLoading ? <LoadingRows /> : <section className="workspace-panel"><div className="table-wrap"><table className="data-table"><thead><tr><th>{t("common.date")}</th><th>Reference</th><th>Method</th><th>{t("common.amount")}</th><th>{t("common.status")}</th><th /></tr></thead><tbody>{data?.length ? data.map((payment: any) => <tr key={payment.id}><td>{readableDate(payment.paidAt)}</td><td><strong>{payment.reference || "Payment"}</strong></td><td>{payment.method || "—"}</td><td>{money(payment.amount)}</td><td><StatusBadge status={payment.status || "paid"} /></td><td><ViewLink /></td></tr>) : <tr><td colSpan={6}><EmptyState title="No payments recorded" body="Payments will appear here once they are recorded by the loan team." /></td></tr>}</tbody></table></div></section>}</div>;
+}
+
+export function CustomerDocuments() {
+  const { t } = useLanguage();
+  const { data, isLoading, refetch } = trpc.customer.documents.useQuery();
+  const upload = trpc.documents.upload.useMutation({ onSuccess: () => refetch() });
+  const [message, setMessage] = useState("");
+  const handleUpload = (event: ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => { const content = String(reader.result).split(",")[1] || ""; upload.mutate({ fileName: file.name, mimeType: file.type || "application/octet-stream", contentBase64: content }); setMessage("Uploading securely…"); }; reader.readAsDataURL(file); };
+  return <div><WorkspacePageHeader eyebrow={t("dashboard.documents")} title="Your documents" body={t("customer.documentsBody")} action={<label className="button button--orange"><Upload size={16} />{t("customer.upload")}<input type="file" hidden onChange={handleUpload} /></label>} />{message && <div className="inline-notice">{upload.isPending ? message : "Document uploaded successfully."}</div>}{isLoading ? <LoadingRows /> : <section className="document-grid">{data?.length ? data.map((document: any) => <article className="document-card" key={document.id}><div className="document-card__icon"><FileText size={20} /></div><div><h3>{document.fileName}</h3><p>{document.documentType || "Loan document"}</p><span>{readableDate(document.createdAt)}</span></div><a href={document.url || "#"} target="_blank" rel="noreferrer" className="icon-button" aria-label="View document"><ArrowUpRight size={17} /></a></article>) : <EmptyState title="No documents yet" body="Upload the documents requested by your loan team." />}</section>}</div>;
+}
+
+export function CustomerProfile() {
+  const { t } = useLanguage();
+  const { data, refetch } = trpc.customer.profile.useQuery();
+  const update = trpc.customer.profileUpdate.useMutation({ onSuccess: () => refetch() });
+  const [form, setForm] = useState<any>(null);
+  const current = form || data || { name: "", email: "", phone: "", address: "", occupation: "", monthlyIncome: "" };
+  const set = (key: string, value: string) => setForm((valueState: any) => ({ ...(valueState || current), [key]: value }));
+  const submit = () => update.mutate({ name: current.name, email: current.email, phone: current.phone, address: current.address, occupation: current.occupation, monthlyIncome: Number(current.monthlyIncome || 0) });
+  return <div><WorkspacePageHeader eyebrow={t("dashboard.profile")} title="Your profile" body={t("customer.profileBody")} /><section className="workspace-panel profile-panel"><div className="profile-panel__intro"><div className="profile-avatar"><UserRound size={24} /></div><div><h2>{current.name || "Your details"}</h2><p>Only your own profile information is shown here.</p></div></div><div className="form-grid form-grid--two"><Field label={t("apply.fullName")} value={current.name} onChange={(v) => set("name", v)} /><Field label={t("apply.email")} value={current.email} onChange={(v) => set("email", v)} type="email" /><Field label={t("apply.mobile")} value={current.phone} onChange={(v) => set("phone", v)} /><Field label={t("apply.occupation")} value={current.occupation} onChange={(v) => set("occupation", v)} /><Field label={t("apply.income")} value={String(current.monthlyIncome || "")} onChange={(v) => set("monthlyIncome", v)} type="number" /><Field label={t("apply.address")} value={current.address} onChange={(v) => set("address", v)} textarea /></div><div className="profile-panel__actions"><span>{update.isSuccess ? "Profile updated." : ""}</span><button className="button button--orange" type="button" onClick={submit} disabled={update.isPending}>{update.isPending ? t("common.loading") : t("common.save")}</button></div></section></div>;
+}
+
+function Detail({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><strong>{value}</strong></div>; }
+function Field({ label, value, onChange, type = "text", textarea = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; textarea?: boolean }) { return <label className="field"><span>{label}</span>{textarea ? <textarea rows={3} value={value} onChange={(event) => onChange(event.target.value)} /> : <input type={type} value={value} onChange={(event) => onChange(event.target.value)} />}</label>; }
+function LoadingRows() { return <div className="loading-block"><span /><span /><span /></div>; }
